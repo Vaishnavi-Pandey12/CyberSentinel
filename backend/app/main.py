@@ -8,6 +8,8 @@ from app.api.predictions import router as predictions_router
 from app.api.locations import router as locations_router
 from app.api.alerts import router as alerts_router
 from app.api.dashboard import router as dashboard_router
+from app.api.cases import router as cases_router
+from app.api.complaints import router as complaints_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,6 +45,9 @@ app.include_router(predictions_router, prefix=API_PREFIX)
 app.include_router(locations_router, prefix=API_PREFIX)
 app.include_router(alerts_router, prefix=API_PREFIX)
 app.include_router(dashboard_router, prefix=API_PREFIX)
+app.include_router(cases_router, prefix=API_PREFIX)
+app.include_router(complaints_router, prefix=API_PREFIX)
+
 
 @app.get("/health", tags=["Health"])
 def health_check():
