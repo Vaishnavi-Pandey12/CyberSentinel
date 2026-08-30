@@ -1,4 +1,4 @@
-import { Handle, Position, NodeProps, Node } from '@xyflow/react';
+import { Handle, Position, type NodeProps, type Node } from '@xyflow/react';
 
 export interface EntityNodeData extends Record<string, unknown> {
   id: string;

@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { ReactFlow, Background, Controls, useNodesState, useEdgesState, Node, Edge } from '@xyflow/react';
+import { ReactFlow, Background, Controls, useNodesState, useEdgesState, type Node, type Edge, BackgroundVariant } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import EntityNode, { EntityNodeData } from './EntityNode';
+import EntityNode, { type EntityNodeData } from './EntityNode';
 import { api } from '../services/api';
 
 const nodeTypes = { entity: EntityNode };
@@ -165,7 +165,7 @@ export default function InvestigationWorkspace() {
             fitView
             className="bg-[#0F1210]"
           >
-            <Background color="#ffffff" variant="dots" gap={20} size={1} opacity={0.05} />
+            <Background color="#ffffff" variant={BackgroundVariant.Dots} gap={20} size={1} style={{ opacity: 0.05 }} />
             <Controls className="bg-[#0F1210] border-white/10 fill-gray-400" showInteractive={false} />
           </ReactFlow>
         </div>
