@@ -134,3 +134,53 @@ async def propagate_risk_and_find_hotspots(request: Request):
         "nodes_scored": len(G.nodes),
         "interdiction_zones": interdiction_zones
     }
+
+@router.get("/case/{case_id}")
+@router.get("/api/engine/case/{case_id}")
+async def get_case_graph(case_id: str, request: Request):
+    db = get_db(request)
+    nodes = await db["nodes"].find({"status": {"$ne": "DELETED"}}).to_list(length=100)
+    edges = await db["edges"].find().to_list(length=100)
+
+    if not nodes:
+        nodes = SEED_NODES
+    if not edges:
+        edges = SEED_EDGES
+
+    formatted_nodes = [
+        {
+            "id": str(n.get("_id") or n.get("id")),
+            "type": "entity",
+            "position": n.get("position", {
+                "x": 300,
+                "y": 50 if n.get("type") == "VICTIM" else (200 if n.get("type") == "MULE" else 350)
+            }),
+            "data": {
+                "id": str(n.get("_id") or n.get("id")),
+                "label": n.get("label") or n.get("metadata", {}).get("name") or str(n.get("_id")),
+                "type": n.get("type", "MULE"),
+                "riskScore": n.get("riskScore", 80),
+                "status": n.get("status", "ACTIVE")
+            }
+        }
+        for n in nodes
+    ]
+
+    formatted_edges = [
+        {
+            "id": f"e{e.get('source')}-{e.get('target')}",
+            "source": str(e.get("source")),
+            "target": str(e.get("target")),
+            "animated": True,
+            "style": {"stroke": "#48D878" if e.get("type") == "TRANSFER" else "#ef4444", "strokeWidth": 2, "opacity": 0.6}
+        }
+        for e in edges
+    ]
+
+    return {
+        "status": "success",
+        "case_id": case_id,
+        "nodes": formatted_nodes,
+        "edges": formatted_edges
+    }
+

@@ -11,6 +11,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.cases import router as cases_router
 from app.api.complaints import router as complaints_router
 from app.api.engine import router as engine_router
+from app.api.actions import router as actions_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -51,6 +52,9 @@ app.include_router(cases_router, prefix=API_PREFIX)
 app.include_router(complaints_router, prefix=API_PREFIX)
 app.include_router(engine_router, prefix=API_PREFIX)
 app.include_router(engine_router, prefix="/api")
+app.include_router(actions_router, prefix=API_PREFIX)
+app.include_router(actions_router, prefix="/api")
+
 
 
 @app.get("/health", tags=["Health"])
