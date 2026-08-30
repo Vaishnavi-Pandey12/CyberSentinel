@@ -49,7 +49,7 @@ export default function EntityNode({ data }: NodeProps<Node<EntityNodeData>>) {
       <div className="flex justify-between items-end mt-5">
         <span className="text-[10px] uppercase tracking-wider text-gray-500">Risk Score</span>
         <span className={`text-base font-bold ${activeStyle.text}`}>
-          {score}
+          {Number(score).toFixed(1)}
         </span>
       </div>
 

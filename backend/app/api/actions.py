@@ -97,3 +97,26 @@ async def freeze_account(request_body: FreezeRequest, request: Request):
             "previous_hash": previous_hash
         }
     }
+
+@router.get("/audit-logs")
+@router.get("/api/action/audit-logs")
+async def get_audit_logs(request: Request):
+    """Fetches the most recent cryptographic ledger entries for the terminal."""
+    try:
+        db = get_db(request)
+        audit_col = db["audit_logs"]
+        logs = await audit_col.find().sort([("_id", -1)]).to_list(length=20)
+        return [
+            {
+                "id": str(log.get("_id")),
+                "action": log.get("action", "FREEZE_INITIATED"),
+                "targetNodeId": str(log.get("targetNodeId", "")),
+                "previousHash": log.get("previousHash", ""),
+                "currentHash": log.get("currentHash", ""),
+                "timestamp": str(log.get("createdAt") or datetime.now(timezone.utc).isoformat())
+            }
+            for log in logs
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

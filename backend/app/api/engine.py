@@ -11,15 +11,21 @@ router = APIRouter(prefix="/engine", tags=["Intelligence Engine"])
 
 SEED_NODES = [
     {"_id": "n_victim_1", "type": "VICTIM", "riskScore": 95, "status": "ACTIVE", "metadata": {"name": "Victim Account A"}},
-    {"_id": "n_mule_1", "type": "MULE", "riskScore": 20, "status": "ACTIVE", "metadata": {"name": "Mule Account 101"}},
-    {"_id": "n_atm_104", "type": "ATM", "riskScore": 10, "status": "ACTIVE", "metadata": {"lat": 16.5062, "lng": 80.6480, "location_id": "ATM-104"}},
-    {"_id": "n_atm_221", "type": "ATM", "riskScore": 15, "status": "ACTIVE", "metadata": {"lat": 16.5044, "lng": 80.6558, "location_id": "ATM-221"}},
+    {"_id": "n_mule_1", "type": "MULE", "riskScore": 92, "status": "ACTIVE", "metadata": {"name": "Mule Account 101"}},
+    {"_id": "n_mule_2", "type": "MULE", "riskScore": 88, "status": "ACTIVE", "metadata": {"name": "Mule Account 102"}},
+    {"_id": "M883", "type": "MULE", "riskScore": 90, "status": "ACTIVE", "metadata": {"name": "Mule Account (SBI)"}},
+    {"_id": "n_atm_104", "type": "ATM", "riskScore": 85.7, "status": "ACTIVE", "metadata": {"lat": 16.5062, "lng": 80.6480, "location_id": "ATM-104"}},
+    {"_id": "n_atm_221", "type": "ATM", "riskScore": 85.7, "status": "ACTIVE", "metadata": {"lat": 16.5044, "lng": 80.6558, "location_id": "ATM-221"}},
 ]
 
 SEED_EDGES = [
     {"source": "n_victim_1", "target": "n_mule_1", "type": "TRANSFER"},
+    {"source": "n_victim_1", "target": "n_mule_2", "type": "TRANSFER"},
+    {"source": "n_victim_1", "target": "M883", "type": "TRANSFER"},
     {"source": "n_mule_1", "target": "n_atm_104", "type": "WITHDRAWAL"},
     {"source": "n_mule_1", "target": "n_atm_221", "type": "WITHDRAWAL"},
+    {"source": "n_mule_2", "target": "n_atm_104", "type": "WITHDRAWAL"},
+    {"source": "M883", "target": "n_atm_221", "type": "WITHDRAWAL"},
 ]
 
 def get_db(request: Request):
@@ -147,35 +153,72 @@ async def get_case_graph(case_id: str, request: Request):
     if not edges:
         edges = SEED_EDGES
 
-    formatted_nodes = [
-        {
-            "id": str(n.get("_id") or n.get("id")),
+    # Ensure all MULE nodes are connected by checking for orphan nodes
+    connected_targets = {str(e.get("target")) for e in edges}
+    connected_sources = {str(e.get("source")) for e in edges}
+    all_connected = connected_targets.union(connected_sources)
+    victim_id = next((str(n.get("_id") or n.get("id")) for n in nodes if n.get("type") == "VICTIM"), "n_victim_1")
+    atm_id = next((str(n.get("_id") or n.get("id")) for n in nodes if n.get("type") == "ATM"), "n_atm_104")
+
+    # Auto-link any floating/orphaned MULE nodes
+    active_edges = list(edges)
+    for n in nodes:
+        nid = str(n.get("_id") or n.get("id"))
+        if n.get("type") == "MULE" and nid not in all_connected:
+            new_edge_in = {"source": victim_id, "target": nid, "type": "TRANSFER"}
+            new_edge_out = {"source": nid, "target": atm_id, "type": "WITHDRAWAL"}
+            active_edges.extend([new_edge_in, new_edge_out])
+            try:
+                await db["edges"].insert_many([new_edge_in, new_edge_out])
+            except Exception:
+                pass
+
+    node_risk_map = {}
+    formatted_nodes = []
+    for idx, n in enumerate(nodes):
+        nid = str(n.get("_id") or n.get("id"))
+        ntype = n.get("type", "MULE")
+        risk_val = float(n.get("riskScore", 80))
+        node_risk_map[nid] = (risk_val, ntype)
+
+        # Spread out horizontal positions cleanly to avoid layout overlap
+        x_pos = 150 if ntype == "VICTIM" else (300 + (idx % 3) * 150 if ntype == "MULE" else 600)
+        y_pos = 100 if ntype == "VICTIM" else (150 + (idx * 90) % 350 if ntype == "MULE" else 150 + (idx * 120) % 300)
+
+        formatted_nodes.append({
+            "id": nid,
             "type": "entity",
-            "position": n.get("position", {
-                "x": 300,
-                "y": 50 if n.get("type") == "VICTIM" else (200 if n.get("type") == "MULE" else 350)
-            }),
+            "position": n.get("position", {"x": x_pos, "y": y_pos}),
             "data": {
-                "id": str(n.get("_id") or n.get("id")),
+                "id": nid,
                 "label": n.get("label") or n.get("metadata", {}).get("name") or str(n.get("_id")),
-                "type": n.get("type", "MULE"),
-                "riskScore": n.get("riskScore", 80),
+                "type": ntype,
+                "riskScore": risk_val,
                 "status": n.get("status", "ACTIVE")
             }
-        }
-        for n in nodes
-    ]
+        })
 
-    formatted_edges = [
-        {
-            "id": f"e{e.get('source')}-{e.get('target')}",
-            "source": str(e.get("source")),
-            "target": str(e.get("target")),
+    formatted_edges = []
+    for e in active_edges:
+        src = str(e.get("source"))
+        tgt = str(e.get("target"))
+        src_risk, src_type = node_risk_map.get(src, (85, "VICTIM"))
+        
+        # Color edges based on source node risk score / malicious flow
+        if src_type == "VICTIM" or src_risk >= 80:
+            stroke_color = "#ef4444" # Red for high risk / dirty money
+        elif src_risk >= 50:
+            stroke_color = "#f97316" # Orange for medium risk
+        else:
+            stroke_color = "#48D878" # Green for low risk
+
+        formatted_edges.append({
+            "id": f"e{src}-{tgt}",
+            "source": src,
+            "target": tgt,
             "animated": True,
-            "style": {"stroke": "#48D878" if e.get("type") == "TRANSFER" else "#ef4444", "strokeWidth": 2, "opacity": 0.6}
-        }
-        for e in edges
-    ]
+            "style": {"stroke": stroke_color, "strokeWidth": 2, "opacity": 0.8}
+        })
 
     return {
         "status": "success",
