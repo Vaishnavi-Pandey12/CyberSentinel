@@ -35,7 +35,7 @@ function normalizePrediction(p: any): Prediction {
   }
 
   return {
-    id: p.id || p.prediction_id,
+    id: p.id,
     location_id: p.location_id || p.id,
     location_name: p.location_name || p.location_id || 'Location',
     region: p.region || 'Unknown Region',
@@ -86,10 +86,6 @@ export const authService = {
 
     localStorage.setItem('cs-user', JSON.stringify(user));
     return user;
-  },
-
-  getMe: async (): Promise<any> => {
-    return await api.get<any>('/auth/me');
   },
 
   current: (): User | null => {
@@ -186,51 +182,28 @@ export const locationService = {
   },
 };
 
-export const complaintService = {
-  getComplaints: async (): Promise<any[]> => {
-    return await api.get<any[]>('/complaints/');
-  },
-};
-
 export const caseService = {
-  getCases: async (): Promise<Case[]> => {
-    try {
-      const data = await api.get<Case[]>('/cases/');
-      return Array.isArray(data) ? data : [];
-    } catch {
-      return mockCases;
-    }
-  },
-
-  getCaseById: async (id: string): Promise<Case | undefined> => {
+  get: async (id: string): Promise<Case | undefined> => {
     try {
       const caseData = await api.get<Case>(`/cases/${encodeURIComponent(id)}`);
-      if (caseData && (caseData.id || (caseData as any)._id)) return caseData;
+      if (caseData && caseData.id) return caseData;
     } catch {
-      // Fall back to baseline mock if backend network is unreachable
+      // Fall back to baseline mock if needed
     }
-    return mockCases.find((c) => c.id === id);
+    const found = mockCases.find((c) => c.id === id);
+    return found;
   },
 
-  get: async (id: string): Promise<Case | undefined> => {
-    return await caseService.getCaseById(id);
-  },
-
-  createCase: async (caseData: any): Promise<any> => {
-    return await api.post('/cases/', caseData);
-  },
-
-  addNote: async (id: string, noteData: any): Promise<Case | undefined> => {
-    const notePayload = typeof noteData === 'string' ? { note: noteData } : noteData;
+  addNote: async (id: string, note: string): Promise<Case | undefined> => {
     try {
-      return await api.post<Case>(`/cases/${encodeURIComponent(id)}/notes`, notePayload);
+      return await api.post<Case>(`/cases/${encodeURIComponent(id)}/notes`, { note });
     } catch {
       const found = mockCases.find((c) => c.id === id);
       if (found) {
-        const noteText = typeof noteData === 'string' ? noteData : (noteData?.note || JSON.stringify(noteData));
-        found.notes.push(noteText);
+        found.notes.push(note);
         return { ...found };
       }
     }
   },
 };
+
