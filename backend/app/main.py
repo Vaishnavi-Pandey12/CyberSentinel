@@ -15,7 +15,7 @@ from app.api.complaints import router as complaints_router
 async def lifespan(app: FastAPI):
     # Startup: Connect to MongoDB Atlas
     await connect_to_mongo()
-    app.mongodb = get_database()
+    app.state.mongodb = get_database()
     yield
     # Shutdown: Close MongoDB connection
     await close_mongo_connection()
@@ -30,6 +30,10 @@ app = FastAPI(
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
 ]
 
 app.add_middleware(
