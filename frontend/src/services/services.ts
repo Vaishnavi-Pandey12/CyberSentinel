@@ -35,7 +35,7 @@ function normalizePrediction(p: any): Prediction {
   }
 
   return {
-    id: p.id,
+    id: p.id || p.prediction_id,
     location_id: p.location_id || p.id,
     location_name: p.location_name || p.location_id || 'Location',
     region: p.region || 'Unknown Region',
@@ -86,6 +86,10 @@ export const authService = {
 
     localStorage.setItem('cs-user', JSON.stringify(user));
     return user;
+  },
+
+  getMe: async (): Promise<any> => {
+    return await api.get<any>('/auth/me');
   },
 
   current: (): User | null => {
@@ -182,28 +186,51 @@ export const locationService = {
   },
 };
 
+export const complaintService = {
+  getComplaints: async (): Promise<any[]> => {
+    return await api.get<any[]>('/complaints/');
+  },
+};
+
 export const caseService = {
-  get: async (id: string): Promise<Case | undefined> => {
+  getCases: async (): Promise<Case[]> => {
     try {
-      const caseData = await api.get<Case>(`/cases/${encodeURIComponent(id)}`);
-      if (caseData && caseData.id) return caseData;
+      const data = await api.get<Case[]>('/cases/');
+      return Array.isArray(data) ? data : [];
     } catch {
-      // Fall back to baseline mock if needed
+      return mockCases;
     }
-    const found = mockCases.find((c) => c.id === id);
-    return found;
   },
 
-  addNote: async (id: string, note: string): Promise<Case | undefined> => {
+  getCaseById: async (id: string): Promise<Case | undefined> => {
     try {
-      return await api.post<Case>(`/cases/${encodeURIComponent(id)}/notes`, { note });
+      const caseData = await api.get<Case>(`/cases/${encodeURIComponent(id)}`);
+      if (caseData && (caseData.id || (caseData as any)._id)) return caseData;
+    } catch {
+      // Fall back to baseline mock if backend network is unreachable
+    }
+    return mockCases.find((c) => c.id === id);
+  },
+
+  get: async (id: string): Promise<Case | undefined> => {
+    return await caseService.getCaseById(id);
+  },
+
+  createCase: async (caseData: any): Promise<any> => {
+    return await api.post('/cases/', caseData);
+  },
+
+  addNote: async (id: string, noteData: any): Promise<Case | undefined> => {
+    const notePayload = typeof noteData === 'string' ? { note: noteData } : noteData;
+    try {
+      return await api.post<Case>(`/cases/${encodeURIComponent(id)}/notes`, notePayload);
     } catch {
       const found = mockCases.find((c) => c.id === id);
       if (found) {
-        found.notes.push(note);
+        const noteText = typeof noteData === 'string' ? noteData : (noteData?.note || JSON.stringify(noteData));
+        found.notes.push(noteText);
         return { ...found };
       }
     }
   },
 };
-
