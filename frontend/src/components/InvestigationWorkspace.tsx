@@ -51,9 +51,11 @@ export default function InvestigationWorkspace() {
   
   const terminalEndRef = useRef<HTMLDivElement>(null);
 
-  const fetchGraphAndLogs = async () => {
+  const [isLiveStreaming, setIsLiveStreaming] = useState<boolean>(true);
+
+  const fetchGraphAndLogs = async (silent: boolean = false) => {
     try {
-      setIsLoading(true);
+      if (!silent) setIsLoading(true);
       
       let graphRes: Response | null = null;
       const graphUrls = [
@@ -148,17 +150,30 @@ export default function InvestigationWorkspace() {
       }
     } catch (error) {
       console.error("Telemetry fetch failed", error);
-      setNodes(DEFAULT_FALLBACK_NODES);
-      setEdges(DEFAULT_FALLBACK_EDGES);
-      setAuditLogs(DEFAULT_FALLBACK_LOGS);
+      if (!silent) {
+        setNodes(DEFAULT_FALLBACK_NODES);
+        setEdges(DEFAULT_FALLBACK_EDGES);
+        setAuditLogs(DEFAULT_FALLBACK_LOGS);
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchGraphAndLogs();
-  }, [layoutDirection]);
+    fetchGraphAndLogs(false);
+
+    let intervalId: any = null;
+    if (isLiveStreaming) {
+      intervalId = setInterval(() => {
+        fetchGraphAndLogs(true);
+      }, 4000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [layoutDirection, isLiveStreaming]);
 
   useEffect(() => {
     terminalEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -319,6 +334,17 @@ export default function InvestigationWorkspace() {
         </div>
         
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => setIsLiveStreaming((prev) => !prev)}
+            className={`px-3.5 py-2 font-mono text-xs font-bold rounded-md border transition-all uppercase tracking-widest cursor-pointer flex items-center gap-2 ${
+              isLiveStreaming
+                ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                : 'bg-white/5 text-gray-400 border-white/10'
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${isLiveStreaming ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
+            {isLiveStreaming ? 'STREAM: LIVE 🟢' : 'STREAM: PAUSED ⏸'}
+          </button>
           <button
             onClick={() => setLayoutDirection((prev) => prev === 'TB' ? 'LR' : 'TB')}
             className="px-3.5 py-2 bg-white/5 hover:bg-white/10 text-gray-300 font-mono text-xs font-bold rounded-md border border-white/15 transition-all uppercase tracking-widest cursor-pointer"
