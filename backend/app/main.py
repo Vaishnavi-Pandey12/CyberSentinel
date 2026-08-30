@@ -64,6 +64,7 @@ def root_health_check():
     }
 
 if __name__ == "__main__":
+    # pyrefly: ignore [missing-import]
     import uvicorn
     from app.config import settings
     uvicorn.run("app.main:app", host="127.0.0.1", port=settings.backend_port, reload=True)

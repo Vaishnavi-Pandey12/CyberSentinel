@@ -1,4 +1,5 @@
 import math
+# pyrefly: ignore [missing-import]
 import httpx
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, HTTPException, status
@@ -142,8 +143,11 @@ async def trigger_live_prediction(current_user: TokenData = Depends(get_current_
         coords = geom.get("coordinates", [0.0, 0.0]) # [longitude, latitude]
         lng, lat = coords[0], coords[1]
         
-        # Aggregate complaints for this location / region
+        # Aggregate complaints dynamically for this location / region
         loc_complaints = [c for c in complaints if c.get("region") == loc.get("region")]
+        amounts = [float(c.get("amount", 0)) for c in loc_complaints if c.get("amount")]
+        avg_amount = (sum(amounts) / len(amounts)) if amounts else 5000.0
+        
         recent_txn = len(loc_complaints)
         recent_withdrawal = len([c for c in loc_complaints if "Skimming" in c.get("crime_category", "") or "Withdrawal" in c.get("crime_category", "")])
         
@@ -152,19 +156,19 @@ async def trigger_live_prediction(current_user: TokenData = Depends(get_current_
              "location_id": loc_id,
              "latitude": lat,
              "longitude": lng,
-             "log_transaction_amount": math.log1p(5000.0), # typical transaction amount scale
-             "log_account_balance": math.log1p(25000.0),   # typical balance scale
+             "log_transaction_amount": math.log1p(avg_amount),
+             "log_account_balance": math.log1p(avg_amount * 5.0),
              "recent_txn_count": recent_txn,
              "recent_withdrawal_count": recent_withdrawal,
              "withdrawal_ratio": recent_withdrawal / (recent_txn + 1.0),
-             "distance_to_recent_withdrawal_km": 5.0 if recent_withdrawal > 0 else 0.0,
-             "dist_from_last_txn_km": 2.0,
-             "minutes_since_last_txn": 15.0,
+             "distance_to_recent_withdrawal_km": 2.5 if recent_withdrawal > 0 else 0.5,
+             "dist_from_last_txn_km": 1.2 if recent_txn > 0 else 0.0,
+             "minutes_since_last_txn": 15.0 if recent_txn > 0 else 300.0,
              "withdrawals_past_1h": min(2, recent_withdrawal),
              "withdrawals_past_24h": recent_withdrawal,
-             "location_density_30d": recent_withdrawal * 10,
+             "location_density_30d": max(1, recent_withdrawal * 10),
              "historical_location_risk": loc.get("risk_score") or 0.35,
-             "login_attempts": 1,
+             "login_attempts": 2 if recent_withdrawal > 2 else 1,
              "transaction_duration": 45.0,
              "customer_age": 35,
              "hour_sin": hour_sin,

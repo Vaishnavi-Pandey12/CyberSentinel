@@ -6,6 +6,11 @@ from typing import List, Optional
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
+try:
+    from src.spatial_dbscan import cluster_interdiction_zones
+except ImportError:
+    from spatial_dbscan import cluster_interdiction_zones
+
 # 1. Define Request / Response Schemas (API Contract)
 class LocationCandidate(BaseModel):
     location_id: str
@@ -50,6 +55,8 @@ class PredictionResult(BaseModel):
     rank: int
     top_factors: List[str]
     model_version: str
+    cluster_id: Optional[str] = "UNCATEGORIZED"
+    is_interdiction_zone: bool = False
 
 class PredictResponse(BaseModel):
     status: str
@@ -124,6 +131,14 @@ def predict_hotspots(payload: PredictRequest):
     candidate_dicts = [c.dict() for c in payload.candidates]
     df_candidates = pd.DataFrame(candidate_dicts)
 
+    # Run Spatial DBSCAN Clustering to tag locations into Interdiction Zones
+    try:
+        df_clustered = cluster_interdiction_zones(df_candidates, eps_km=2.0, min_samples=2)
+    except Exception:
+        df_clustered = df_candidates.copy()
+        df_clustered['cluster_id'] = -1
+        df_clustered['is_interdiction_zone'] = 0
+
     # Align feature matrix with the Isolation Forest's training columns
     X_input = df_candidates.reindex(columns=expected_features, fill_value=0)
 
@@ -138,13 +153,18 @@ def predict_hotspots(payload: PredictRequest):
         risk_level = get_risk_level(risk_score)
         top_factors = extract_top_factors(row)
 
+        cid = str(df_clustered.loc[idx, 'cluster_id']) if 'cluster_id' in df_clustered.columns else "UNCATEGORIZED"
+        is_interdiction = bool(df_clustered.loc[idx, 'is_interdiction_zone'] == 1) if 'is_interdiction_zone' in df_clustered.columns else False
+
         scored_candidates.append({
             "location_id": row["location_id"],
             "risk_score": round(risk_score, 4),
             "risk_level": risk_level,
             "predicted_window": payload.predicted_window,
             "top_factors": top_factors,
-            "model_version": model_version
+            "model_version": model_version,
+            "cluster_id": f"CLUSTER_{cid}" if cid != "-1" and cid != "UNCATEGORIZED" else "UNCATEGORIZED",
+            "is_interdiction_zone": is_interdiction
         })
 
     # Sort descending by risk score to rank hotspots (Rank 1 = highest risk)
@@ -165,6 +185,7 @@ def predict_hotspots(payload: PredictRequest):
         count=len(predictions),
         predictions=predictions
     )
+
 
 if __name__ == "__main__":
     import uvicorn
