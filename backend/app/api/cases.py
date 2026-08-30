@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, status
-from typing import List, Optional
+from fastapi import APIRouter, Request, HTTPException, status
+from typing import List, Optional, Union
+from datetime import datetime, timezone
+from bson import ObjectId
 from app.db.mongo import get_database
-from app.schemas.case import CaseCreate, CaseResponse, CaseNoteCreate
 
 router = APIRouter(prefix="/cases", tags=["Cases"])
 
@@ -37,81 +38,91 @@ SEED_CASES = [
     }
 ]
 
-async def seed_cases_if_empty():
-    db = get_database()
-    count = await db.cases.count_documents({})
-    if count == 0:
-        await db.cases.insert_many(SEED_CASES)
+def get_db(request: Request):
+    if hasattr(request.app, "mongodb") and request.app.mongodb is not None:
+        return request.app.mongodb
+    return get_database()
 
-@router.get("/", response_model=List[CaseResponse])
-async def get_cases():
-    db = get_database()
-    await seed_cases_if_empty()
-    cases = await db.cases.find({}, {"_id": 0}).to_list(length=100)
+def build_id_query(case_id: str):
+    if ObjectId.is_valid(case_id):
+        return {"$or": [{"_id": ObjectId(case_id)}, {"id": case_id}]}
+    return {"id": case_id}
+
+async def seed_cases_if_empty(db):
+    count = await db["cases"].count_documents({})
+    if count == 0:
+        await db["cases"].insert_many(SEED_CASES)
+
+@router.get("/")
+async def get_cases(request: Request):
+    db = get_db(request)
+    await seed_cases_if_empty(db)
+    cases = await db["cases"].find().to_list(length=100)
+    for case in cases:
+        if "_id" in case:
+            case["_id"] = str(case["_id"])
+        if "id" not in case:
+            case["id"] = case["_id"]
     return cases
 
-@router.get("/{case_id}", response_model=CaseResponse)
-async def get_case_by_id(case_id: str):
-    db = get_database()
-    await seed_cases_if_empty()
-    case = await db.cases.find_one({"id": case_id}, {"_id": 0})
+@router.get("/{case_id}")
+async def get_case(case_id: str, request: Request):
+    db = get_db(request)
+    await seed_cases_if_empty(db)
+    case = await db["cases"].find_one(build_id_query(case_id))
     if not case:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Case record with ID '{case_id}' was not found."
-        )
+        raise HTTPException(status_code=404, detail=f"Case '{case_id}' not found")
+    if "_id" in case:
+        case["_id"] = str(case["_id"])
+    if "id" not in case:
+        case["id"] = case["_id"]
     return case
 
-@router.post("/", response_model=CaseResponse, status_code=status.HTTP_201_CREATED)
-async def create_case(case_input: CaseCreate):
-    db = get_database()
-    existing = await db.cases.find_one({"id": case_input.id})
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Case with ID '{case_input.id}' already exists."
-        )
-    case_doc = case_input.model_dump()
-    await db.cases.insert_one(case_doc)
-    return CaseResponse.model_validate(case_doc)
+@router.post("/")
+async def create_case(request: Request, case_data: dict):
+    db = get_db(request)
+    if "created_at" not in case_data:
+        case_data["created_at"] = datetime.now(timezone.utc).isoformat()
+    if "status" not in case_data:
+        case_data["status"] = "ACTIVE"
+    
+    result = await db["cases"].insert_one(case_data)
+    inserted_id = str(result.inserted_id)
+    return {"message": "Case created", "id": case_data.get("id", inserted_id), "_id": inserted_id}
 
-@router.post("/{case_id}/notes", response_model=CaseResponse)
-async def add_case_note(case_id: str, note_input: CaseNoteCreate):
-    db = get_database()
-    await seed_cases_if_empty()
-    result = await db.cases.find_one_and_update(
-        {"id": case_id},
-        {"$push": {"notes": note_input.note}},
-        return_document=True
-    )
-    if not result:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Case record '{case_id}' not found."
-        )
-    if "_id" in result:
-        del result["_id"]
-    return CaseResponse.model_validate(result)
-
-@router.patch("/{case_id}", response_model=CaseResponse)
-async def update_case(case_id: str, update_data: dict):
-    db = get_database()
-    await seed_cases_if_empty()
-    # Filter out _id or id updates if present
+@router.patch("/{case_id}")
+async def update_case(case_id: str, request: Request, update_data: dict):
+    db = get_db(request)
+    await seed_cases_if_empty(db)
     clean_update = {k: v for k, v in update_data.items() if k not in ["_id", "id"]}
     if not clean_update:
-        raise HTTPException(status_code=400, detail="No valid fields provided for update.")
-    
-    result = await db.cases.find_one_and_update(
-        {"id": case_id},
-        {"$set": clean_update},
-        return_document=True
+        raise HTTPException(status_code=400, detail="No valid fields provided for update")
+
+    result = await db["cases"].update_one(
+        build_id_query(case_id), {"$set": clean_update}
     )
-    if not result:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Case record '{case_id}' not found."
-        )
-    if "_id" in result:
-        del result["_id"]
-    return CaseResponse.model_validate(result)
+    if result.matched_count == 0 and result.modified_count == 0:
+        raise HTTPException(status_code=400, detail="Case not found or not updated")
+    return {"message": "Case updated successfully"}
+
+@router.post("/{case_id}/notes")
+async def add_case_note(case_id: str, request: Request, note_payload: Union[dict, str]):
+    db = get_db(request)
+    await seed_cases_if_empty(db)
+    
+    note_text = ""
+    if isinstance(note_payload, dict):
+        note_text = note_payload.get("note") or note_payload.get("text") or str(note_payload)
+    else:
+        note_text = str(note_payload)
+
+    result = await db["cases"].update_one(
+        build_id_query(case_id), {"$push": {"notes": note_text}}
+    )
+    if result.matched_count == 0 and result.modified_count == 0:
+        raise HTTPException(status_code=404, detail=f"Case '{case_id}' not found")
+        
+    updated_case = await db["cases"].find_one(build_id_query(case_id))
+    if updated_case and "_id" in updated_case:
+        updated_case["_id"] = str(updated_case["_id"])
+    return updated_case or {"message": "Note added"}

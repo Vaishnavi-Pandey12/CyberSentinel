@@ -113,12 +113,17 @@ export function Investigation() {
             <p key={x}>• {x}</p>
           ))}
           <form
-            onSubmit={(e) => {
+            onSubmit={async (e) => {
               e.preventDefault();
-              if (note) {
-                c.notes.push(note);
+              if (note && c) {
+                const updated = await caseService.addNote(c.id, note);
+                if (updated) {
+                  setC(updated);
+                } else {
+                  c.notes.push(note);
+                  setC({ ...c });
+                }
                 setNote('');
-                setC({ ...c });
               }
             }}
           >

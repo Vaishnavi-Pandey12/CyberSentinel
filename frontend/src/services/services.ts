@@ -144,14 +144,24 @@ export const alertService = {
   },
 
   acknowledge: async (id: string): Promise<Alert> => {
-    // Local update & acknowledgment flow
-    return {
-      id,
-      prediction_id: '',
-      severity: 'CRITICAL',
-      status: 'ACKNOWLEDGED',
-      created_at: new Date().toISOString(),
-    };
+    try {
+      const res = await api.post<{ status: string; data: Alert }>(`/alerts/${encodeURIComponent(id)}/acknowledge`);
+      return res?.data || {
+        id,
+        prediction_id: '',
+        severity: 'CRITICAL',
+        status: 'ACKNOWLEDGED',
+        created_at: new Date().toISOString(),
+      };
+    } catch {
+      return {
+        id,
+        prediction_id: '',
+        severity: 'CRITICAL',
+        status: 'ACKNOWLEDGED',
+        created_at: new Date().toISOString(),
+      };
+    }
   },
 
   forPrediction: async (predictionId: string): Promise<Alert | undefined> => {
@@ -174,8 +184,26 @@ export const locationService = {
 
 export const caseService = {
   get: async (id: string): Promise<Case | undefined> => {
-    // Return case from mock/seeded collection linkage
+    try {
+      const caseData = await api.get<Case>(`/cases/${encodeURIComponent(id)}`);
+      if (caseData && caseData.id) return caseData;
+    } catch {
+      // Fall back to baseline mock if needed
+    }
     const found = mockCases.find((c) => c.id === id);
     return found;
   },
+
+  addNote: async (id: string, note: string): Promise<Case | undefined> => {
+    try {
+      return await api.post<Case>(`/cases/${encodeURIComponent(id)}/notes`, { note });
+    } catch {
+      const found = mockCases.find((c) => c.id === id);
+      if (found) {
+        found.notes.push(note);
+        return { ...found };
+      }
+    }
+  },
 };
+
