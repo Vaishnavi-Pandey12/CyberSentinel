@@ -6,26 +6,43 @@ export function getLayoutedElements<T extends Node>(
   direction: 'TB' | 'LR' = 'TB'
 ): { nodes: T[]; edges: Edge[] } {
   const isHorizontal = direction === 'LR';
-  
-  const layoutedNodes = nodes.map((node, idx) => {
-    if (node.position && (node.position.x !== 0 || node.position.y !== 0)) {
-      return node;
-    }
-    const nodeType = String((node.data as any)?.type || node.type || '').toUpperCase();
-    let level = 1;
-    if (nodeType === 'VICTIM') level = 0;
-    else if (nodeType === 'MULE') level = 1;
-    else if (nodeType === 'DEVICE') level = 1;
-    else if (nodeType === 'ATM') level = 2;
 
-    const x = isHorizontal ? level * 250 : 150 + (idx % 3) * 180;
-    const y = isHorizontal ? 100 + (idx * 100) : 50 + level * 160;
+  // Group nodes by hierarchical tier
+  const tierVictims: T[] = [];
+  const tierMules: T[] = [];
+  const tierATMs: T[] = [];
+  const tierOthers: T[] = [];
 
-    return {
-      ...node,
-      position: { x, y }
-    };
+  nodes.forEach((node) => {
+    const rawType = String((node.data as any)?.type || node.type || '').toUpperCase();
+    if (rawType.includes('VICTIM')) tierVictims.push(node);
+    else if (rawType.includes('MULE') || rawType.includes('DEVICE')) tierMules.push(node);
+    else if (rawType.includes('ATM')) tierATMs.push(node);
+    else tierOthers.push(node);
   });
+
+  const layoutedNodes: T[] = [];
+
+  const arrangeTier = (tierNodes: T[], level: number) => {
+    const total = tierNodes.length;
+    const spacingX = 260; // horizontal gap between nodes
+    const startX = Math.max(100, 400 - (total * spacingX) / 2);
+
+    tierNodes.forEach((node, idx) => {
+      const x = isHorizontal ? level * 300 + 100 : startX + idx * spacingX;
+      const y = isHorizontal ? 120 + idx * 180 : level * 200 + 80;
+
+      layoutedNodes.push({
+        ...node,
+        position: { x, y }
+      });
+    });
+  };
+
+  arrangeTier(tierVictims, 0);
+  arrangeTier(tierMules, 1);
+  arrangeTier(tierATMs, 2);
+  arrangeTier(tierOthers, 1.5);
 
   return { nodes: layoutedNodes, edges };
 }

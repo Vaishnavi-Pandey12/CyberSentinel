@@ -86,28 +86,24 @@ def seed_database():
             "metadata": {"label": "Shared IP (192.168.x.x)", "ip": "192.168.1.45"}
         }).inserted_id
 
-        print(f"[SEED] Seeding ATM Nodes (Vijayawada Region) in '{db_name}'...")
-        atm1_id = nodes_col.insert_one({
-            "type": "ATM",
-            "riskScore": 0,
-            "status": "ACTIVE",
-            "metadata": {
-                "label": "ATM - Benz Circle, Vijayawada", 
-                "lat": 16.4971, 
-                "lng": 80.6516
-            }
-        }).inserted_id
-
-        atm2_id = nodes_col.insert_one({
-            "type": "ATM",
-            "riskScore": 0, 
-            "status": "ACTIVE",
-            "metadata": {
-                "label": "ATM - Patamata, Vijayawada", 
-                "lat": 16.4975, 
-                "lng": 80.6650
-            }
-        }).inserted_id
+        print(f"[SEED] Seeding ATM Nodes (Pan-India Scale) in '{db_name}'...")
+        atms = [
+            {"label": "ATM - Connaught Place, New Delhi", "lat": 28.6304, "lng": 77.2177},
+            {"label": "ATM - Bandra Kurla Complex, Mumbai", "lat": 19.0650, "lng": 72.8653},
+            {"label": "ATM - Koramangala, Bengaluru", "lat": 12.9279, "lng": 77.6271},
+            {"label": "ATM - Salt Lake Sector V, Kolkata", "lat": 22.5735, "lng": 88.4334},
+            {"label": "ATM - HITEC City, Hyderabad", "lat": 17.4435, "lng": 78.3772},
+            {"label": "ATM - Benz Circle, Vijayawada", "lat": 16.4971, "lng": 80.6516}
+        ]
+        
+        atm_ids = []
+        for atm in atms:
+            atm_ids.append(nodes_col.insert_one({
+                "type": "ATM",
+                "riskScore": 0, 
+                "status": "ACTIVE",
+                "metadata": atm
+            }).inserted_id)
 
         print(f"[LINK] Linking the Money Trail (Edges) in '{db_name}'...")
         
@@ -126,12 +122,17 @@ def seed_database():
             {"source": mule1_id, "target": mule3_id, "type": "TRANSFER", "weight": 48000}
         )
 
+        # Link the mules to these spread-out ATMs across Pan-India banking corridors
         edges_col.insert_many([
-            {"source": mule2_id, "target": atm1_id, "type": "CASH_WITHDRAWAL"},
-            {"source": mule3_id, "target": atm2_id, "type": "CASH_WITHDRAWAL"}
+            {"source": mule2_id, "target": atm_ids[0], "type": "CASH_WITHDRAWAL"}, # Delhi
+            {"source": mule2_id, "target": atm_ids[1], "type": "CASH_WITHDRAWAL"}, # Mumbai
+            {"source": mule3_id, "target": atm_ids[2], "type": "CASH_WITHDRAWAL"}, # Bengaluru
+            {"source": mule3_id, "target": atm_ids[3], "type": "CASH_WITHDRAWAL"}, # Kolkata
+            {"source": mule1_id, "target": atm_ids[4], "type": "CASH_WITHDRAWAL"}, # Hyderabad
+            {"source": mule1_id, "target": atm_ids[5], "type": "CASH_WITHDRAWAL"}  # Vijayawada
         ])
 
-        print(f"[SUCCESS] Database '{db_name}' Seeded Successfully!")
+        print(f"[SUCCESS] Database '{db_name}' Seeded Successfully with Pan-India Nodes!")
 
 if __name__ == "__main__":
     seed_database()
