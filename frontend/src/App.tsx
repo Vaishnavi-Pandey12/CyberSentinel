@@ -9,6 +9,8 @@ import { Investigation } from './pages/Investigation';
 import { Settings } from './pages/Settings';
 import { authService } from './services/services';
 
+import InvestigationWorkspace from './components/InvestigationWorkspace';
+
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!authService.current()) {
     return <Navigate to="/login" replace />;
@@ -34,9 +36,11 @@ export default function App() {
         <Route path="alerts" element={<Alerts />} />
         <Route path="predictions/:id" element={<PredictionDetail />} />
         <Route path="investigations/:id" element={<Investigation />} />
+        <Route path="investigations/:id/graph" element={<InvestigationWorkspace />} />
+        <Route path="graph" element={<InvestigationWorkspace />} />
         <Route path="settings" element={<Settings />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
-}
+}
