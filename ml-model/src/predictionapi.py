@@ -11,6 +11,11 @@ try:
 except ImportError:
     from spatial_dbscan import cluster_interdiction_zones
 
+try:
+    from src.networkx_risk import run_networkx_risk_propagation, SEED_NODES, SEED_EDGES
+except ImportError:
+    from networkx_risk import run_networkx_risk_propagation, SEED_NODES, SEED_EDGES
+
 # 1. Define Request / Response Schemas (API Contract)
 class LocationCandidate(BaseModel):
     location_id: str
@@ -186,8 +191,16 @@ def predict_hotspots(payload: PredictRequest):
         predictions=predictions
     )
 
+# 4. NetworkX Graph Risk Propagation Endpoint
+@app.post("/api/engine/propagate-risk")
+@app.post("/propagate-risk")
+def propagate_risk_and_find_hotspots(payload: Optional[dict] = None):
+    nodes = (payload.get("nodes") if payload else None) or SEED_NODES
+    edges = (payload.get("edges") if payload else None) or SEED_EDGES
+    return run_networkx_risk_propagation(nodes, edges)
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
  
