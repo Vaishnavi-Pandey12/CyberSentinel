@@ -34,6 +34,8 @@ export interface Alert {
   prediction_id: string;
   severity: RiskLevel;
   status: AlertStatus;
+  riskScore?: number;
+  risk_score?: number;
   recipient_role?: string;
   created_at: string;
   acknowledged_at?: string | null;

@@ -84,7 +84,34 @@ export function Alerts() {
       <section className="panel table-panel">
         {shown.length ? (
           shown.map((a) => {
-            const x = p.find((z) => z.id === a.prediction_id);
+            const x = p.find(
+              (z) =>
+                z.id === a.prediction_id ||
+                z.id === `p_${a.prediction_id}` ||
+                (z as any).location_id === a.prediction_id
+            );
+
+            // Robust Risk Score Resolution
+            let rawScore: number | undefined;
+            if (x?.risk_score !== undefined && x?.risk_score !== null) rawScore = Number(x.risk_score);
+            else if ((x as any)?.riskScore !== undefined) rawScore = Number((x as any).riskScore);
+            else if (a.riskScore !== undefined) rawScore = Number(a.riskScore);
+            else if (a.risk_score !== undefined) rawScore = Number(a.risk_score);
+
+            if (rawScore === undefined || isNaN(rawScore)) {
+              if (a.severity === 'CRITICAL') rawScore = 95.0;
+              else if (a.severity === 'HIGH') rawScore = 78.0;
+              else if (a.severity === 'MEDIUM') rawScore = 55.0;
+              else rawScore = 30.0;
+            }
+
+            if (rawScore > 0 && rawScore <= 1.0) {
+              rawScore = rawScore * 100;
+            }
+
+            const formattedScore = rawScore.toFixed(1);
+            const scoreColor = rawScore >= 80 ? 'text-red-500' : rawScore >= 70 ? 'text-orange-400' : rawScore >= 50 ? 'text-yellow-400' : 'text-emerald-400';
+
             return (
               <article className="alert-row" key={a.id}>
                 <RiskBadge level={a.severity} />
@@ -96,11 +123,11 @@ export function Alerts() {
                 </div>
                 <div>
                   <small>Risk score</small>
-                  <b>{x ? `${x.risk_score}/100` : 'N/A'}</b>
+                  <b className={`font-mono ${scoreColor}`}>{formattedScore}%</b>
                 </div>
                 <div>
                   <small>Forecast</small>
-                  <b>{x ? x.predicted_window : 'Active'}</b>
+                  <b className="font-mono">{x ? x.predicted_window : 'Active'}</b>
                 </div>
                 <StatusBadge status={a.status} />
                 <div className="row-actions">

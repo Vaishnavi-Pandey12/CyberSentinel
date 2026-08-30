@@ -405,7 +405,7 @@ export default function InvestigationWorkspace() {
                 <div className="flex justify-between items-center py-1 mt-1">
                   <span className="text-xs text-gray-500">Threat Level</span>
                   <span className={`text-xs font-bold ${selectedNode.data.riskScore > 80 ? 'text-red-500' : 'text-[#48D878]'}`}>
-                    {Number(selectedNode.data.riskScore).toFixed(1)}/100
+                    {Number(selectedNode.data.riskScore).toFixed(1)}%
                   </span>
                 </div>
               </div>

@@ -8,10 +8,10 @@ from app.schemas.alert import AlertCreate, AlertAcknowledge
 router = APIRouter(prefix="/alerts", tags=["Alerts"])
 
 SEED_ALERTS = [
-    {"id": "ALT-104", "prediction_id": "p104", "severity": "CRITICAL", "status": "NEW", "created_at": "2026-08-30T15:42:00Z"},
-    {"id": "ALT-221", "prediction_id": "p221", "severity": "CRITICAL", "status": "ACKNOWLEDGED", "created_at": "2026-08-30T14:10:00Z", "acknowledged_at": "2026-08-30T14:30:00Z"},
-    {"id": "ALT-087", "prediction_id": "p087", "severity": "HIGH", "status": "NEW", "created_at": "2026-08-30T12:05:00Z"},
-    {"id": "ALT-309", "prediction_id": "p309", "severity": "MEDIUM", "status": "NEW", "created_at": "2026-08-30T09:32:00Z"},
+    {"id": "ALT-104", "prediction_id": "p104", "riskScore": 95.0, "risk_score": 95.0, "severity": "CRITICAL", "status": "NEW", "created_at": "2026-08-30T15:42:00Z"},
+    {"id": "ALT-221", "prediction_id": "p221", "riskScore": 92.0, "risk_score": 92.0, "severity": "CRITICAL", "status": "ACKNOWLEDGED", "created_at": "2026-08-30T14:10:00Z", "acknowledged_at": "2026-08-30T14:30:00Z"},
+    {"id": "ALT-087", "prediction_id": "p087", "riskScore": 78.0, "risk_score": 78.0, "severity": "HIGH", "status": "NEW", "created_at": "2026-08-30T12:05:00Z"},
+    {"id": "ALT-309", "prediction_id": "p309", "riskScore": 55.0, "risk_score": 55.0, "severity": "MEDIUM", "status": "NEW", "created_at": "2026-08-30T09:32:00Z"},
 ]
 
 def get_db(request: Request):
@@ -39,6 +39,16 @@ async def get_alerts(request: Request):
             a["_id"] = str(a["_id"])
         if "id" not in a:
             a["id"] = a["_id"]
+        # Ensure riskScore & risk_score are populated if missing
+        if "riskScore" not in a and "risk_score" not in a:
+            sev = a.get("severity", "MEDIUM").upper()
+            score = 95.0 if sev == "CRITICAL" else (82.0 if sev == "HIGH" else 58.0)
+            a["riskScore"] = score
+            a["risk_score"] = score
+        elif "riskScore" in a and "risk_score" not in a:
+            a["risk_score"] = a["riskScore"]
+        elif "risk_score" in a and "riskScore" not in a:
+            a["riskScore"] = a["risk_score"]
     return {"status": "success", "count": len(alerts), "data": alerts}
 
 @router.post("/{alert_id}/acknowledge")

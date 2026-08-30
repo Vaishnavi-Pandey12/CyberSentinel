@@ -106,7 +106,7 @@ export default function EntityNode({ data }: NodeProps<Node<EntityNodeData>>) {
         <span className="text-[9px] uppercase tracking-widest text-gray-400 font-semibold">Threat Level</span>
         <span className="text-sm font-extrabold font-mono text-white">
           {score.toFixed(1)}
-          <span className="text-[9px] text-gray-500 font-normal">/100</span>
+          <span className="text-[9px] text-gray-400 font-bold ml-0.5">%</span>
         </span>
       </div>
 

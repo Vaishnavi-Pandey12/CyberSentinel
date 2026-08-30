@@ -65,7 +65,7 @@ export function MapView({
         {data.map((p) => (
           <Marker key={p.id} position={[p.latitude, p.longitude]} eventHandlers={{ click: () => onSelect(p) }} icon={markerIcon(p, selected)}>
             <Tooltip direction="top" offset={[0, -10]} opacity={0.96}>
-              {p.location_id} · {p.risk_level} · {p.risk_score}/100
+              {p.location_id} · {p.risk_level} · {p.risk_score}%
             </Tooltip>
             <Popup>
               <div className="map-popup">

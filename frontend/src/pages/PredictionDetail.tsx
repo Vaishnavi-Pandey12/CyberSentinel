@@ -77,7 +77,7 @@ export function PredictionDetail() {
           <p className="eyebrow">ASSESSMENT</p>
           <div className="big-score">
             {p.risk_score}
-            <span>/100</span>
+            <span>%</span>
           </div>
           <h2>Risk score</h2>
           <div className="meter">

@@ -146,7 +146,7 @@ export function Dashboard() {
                     {x.location_name} · {x.region}
                   </small>
                 </span>
-                <strong>{x.risk_score}/100</strong>
+                <strong>{x.risk_score}%</strong>
                 <RiskBadge level={x.risk_level} />
               </button>
             ))}
