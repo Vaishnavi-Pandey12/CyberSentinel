@@ -10,12 +10,14 @@ from app.api.alerts import router as alerts_router
 from app.api.dashboard import router as dashboard_router
 from app.api.cases import router as cases_router
 from app.api.complaints import router as complaints_router
+from app.api.engine import router as engine_router
+from app.api.actions import router as actions_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Connect to MongoDB Atlas
     await connect_to_mongo()
-    app.mongodb = get_database()
+    app.state.mongodb = get_database()
     yield
     # Shutdown: Close MongoDB connection
     await close_mongo_connection()
@@ -30,6 +32,10 @@ app = FastAPI(
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
 ]
 
 app.add_middleware(
@@ -48,6 +54,12 @@ app.include_router(alerts_router, prefix=API_PREFIX)
 app.include_router(dashboard_router, prefix=API_PREFIX)
 app.include_router(cases_router, prefix=API_PREFIX)
 app.include_router(complaints_router, prefix=API_PREFIX)
+app.include_router(engine_router, prefix=API_PREFIX)
+app.include_router(engine_router, prefix="/api")
+app.include_router(actions_router, prefix=API_PREFIX)
+app.include_router(actions_router, prefix="/api")
+
+
 
 @app.get("/health", tags=["Health"])
 def health_check():

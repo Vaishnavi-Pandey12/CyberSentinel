@@ -48,10 +48,16 @@ export function Investigation() {
   return (
     <div className="page">
       <PageHeader eyebrow="INVESTIGATION / CASE VIEW" title={`CASE #${c.id}`}>
-        <button className="btn secondary" onClick={() => nav('/alerts')}>
-          View related alerts
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="btn primary" onClick={() => nav(`/investigations/${c.id}/graph`)}>
+            Interactive Money Trail Graph
+          </button>
+          <button className="btn secondary" onClick={() => nav('/alerts')}>
+            View related alerts
+          </button>
+        </div>
       </PageHeader>
+
       <div className="case-header">
         <div>
           <span className="status ack">{c.status}</span>
