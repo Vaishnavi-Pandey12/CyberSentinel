@@ -229,7 +229,6 @@ async def get_case_graph(case_id: str, request: Request):
 
 @router.post("/analyze-trail")
 @router.post("/run-intelligence")
-@router.post("/api/engine/run-intelligence")
 async def run_intelligence_pipeline(request: Request = None):
     try:
         db = None

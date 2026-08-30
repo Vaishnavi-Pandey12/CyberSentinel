@@ -42,7 +42,6 @@ def get_db(request: Request):
     return get_database()
 
 @router.post("/complaint")
-@router.post("/api/intake/complaint")
 async def process_ncrp_complaint(complaint: ComplaintInput, request: Request):
     """
     NCRP Cybercrime Complaint Intake Endpoint.

@@ -38,7 +38,6 @@ def get_db(request: Request):
     return get_database()
 
 @router.post("/freeze")
-@router.post("/api/action/freeze")
 async def freeze_account(request_body: FreezeRequest, request: Request):
     db = get_db(request)
     nodes_col = db["nodes"]
@@ -136,7 +135,6 @@ class UnfreezeRequest(BaseModel):
     digital_signature: Optional[str] = None
 
 @router.post("/unfreeze")
-@router.post("/api/action/unfreeze")
 async def unfreeze_account(request_body: UnfreezeRequest, request: Request):
     db = get_db(request)
     nodes_col = db["nodes"]
@@ -223,7 +221,6 @@ async def unfreeze_account(request_body: UnfreezeRequest, request: Request):
     }
 
 @router.get("/audit-logs")
-@router.get("/api/action/audit-logs")
 async def get_audit_logs(request: Request):
     """Fetches the most recent cryptographic ledger entries for the terminal."""
     try:
