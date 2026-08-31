@@ -66,6 +66,12 @@ async def seed():
             "name": "System Administrator",
             "role": "Admin",
             "password_hash": get_password_hash("admin123")
+        },{
+            "id": "u5",
+            "username": "officer1@cybersentinel.gov",
+            "name": "Inspector Pranjal Singh",
+            "role": "LEA Officer",
+            "password_hash": get_password_hash("officer123")
         }
     ])
 
@@ -391,4 +397,4 @@ async def seed():
     client.close()
 
 if __name__ == "__main__":
-    asyncio.run(seed())
+    asyncio.run(seed())
