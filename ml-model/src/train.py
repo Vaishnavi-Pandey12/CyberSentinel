@@ -4,6 +4,7 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import IsolationForest
+from sklearn.metrics import classification_report, confusion_matrix, precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
 
 from features import load_feature_splits
 from preprocessing import preprocess_pipeline
@@ -35,17 +36,17 @@ class Timer:
         avg_per_step = elapsed / self.step
         remaining    = avg_per_step * (self.total - self.step)
         bar_done = int(20 * self.step / self.total)
-        bar = "█" * bar_done + "░" * (20 - bar_done)
+        bar = "#" * bar_done + "-" * (20 - bar_done)
         print(f"\n  [{bar}] Step {self.step}/{self.total}  |  "
               f"Elapsed: {_fmt(elapsed)}  |  "
-              f"ETA: {_fmt(remaining) if self.step < self.total else '—'}")
-        print(f"  ✓ {label}")
+              f"ETA: {_fmt(remaining) if self.step < self.total else '-'}")
+        print(f"  [OK] {label}")
         self._steps.append((label, elapsed))
 
     def summary(self):
         total_elapsed = time.time() - self.start
         print(f"\n{'='*60}")
-        print(f"  Training Pipeline Complete  —  Total time: {_fmt(total_elapsed)}")
+        print(f"  Training Pipeline Complete  -  Total time: {_fmt(total_elapsed)}")
         print(f"{'='*60}")
 
 
@@ -55,7 +56,14 @@ def train_and_evaluate_model(force_reprocess: bool = False, contamination: float
     to detect anomalous withdrawal patterns. Displays timing at each step.
     """
     base_dir      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    raw_csv_path  = os.path.join(base_dir, 'data', 'raw', 'indian_bank_transactions.csv')
+    raw_dir       = os.path.join(base_dir, 'data', 'raw')
+    raw_csv_path  = os.path.join(raw_dir, 'indian_bank_transactions.csv')
+    if not os.path.exists(raw_csv_path) and os.path.exists(raw_dir):
+        csv_files = [f for f in os.listdir(raw_dir) if f.endswith('.csv')]
+        if csv_files:
+            raw_csv_path = os.path.join(raw_dir, csv_files[0])
+            print(f"Default raw file not found. Auto-detected raw file: {raw_csv_path}")
+
     processed_dir = os.path.join(base_dir, 'data', 'processed')
     model_dir     = os.path.join(base_dir, 'models')
     model_path    = os.path.join(model_dir, 'model.pkl')
@@ -80,7 +88,7 @@ def train_and_evaluate_model(force_reprocess: bool = False, contamination: float
 
     # ── Step 2: Load feature splits ─────────────────────────────────────────────
     print("\n[Step 2/5] Loading feature matrices from processed splits...")
-    X_train, _, X_test, _, feature_names = load_feature_splits(processed_dir)
+    X_train, y_train, X_test, y_test, feature_names = load_feature_splits(processed_dir)
     print(f"  Features : {len(feature_names)}")
     print(f"  Train    : {len(X_train):,} samples  (80%)")
     print(f"  Test     : {len(X_test):,}  samples  (20%)")
@@ -100,15 +108,44 @@ def train_and_evaluate_model(force_reprocess: bool = False, contamination: float
     timer.tick("Model training complete")
 
     # ── Step 4: Evaluate on test set ────────────────────────────────────────────
-    print("\n[Step 4/5] Scoring test set for anomaly detection...")
+    print("\n[Step 4/5] Scoring test set & computing evaluation metrics...")
     test_preds    = iso_forest.predict(X_test)
     is_anomaly    = (test_preds == -1).astype(int)
     anomaly_scores= iso_forest.decision_function(X_test)
 
     num_anomalies = is_anomaly.sum()
     pct           = (num_anomalies / len(X_test)) * 100
-    print(f"  Detected : {num_anomalies:,} anomalies out of {len(X_test):,} "
-          f"transactions ({pct:.2f}%)")
+
+    print("\n" + "=" * 60)
+    print("  MODEL EVALUATION METRICS REPORT")
+    print("=" * 60)
+    print(f"  [Anomaly Detection Statistics]")
+    print(f"    Total Test Samples    : {len(X_test):,}")
+    print(f"    Flagged Anomalies     : {num_anomalies:,} ({pct:.2f}%)")
+    print(f"    Anomaly Score Range   : min={anomaly_scores.min():.4f}, max={anomaly_scores.max():.4f}, mean={anomaly_scores.mean():.4f}")
+
+    if y_test is not None:
+        risk_scores = -anomaly_scores  # Invert decision function so higher score = higher risk
+        prec = precision_score(y_test, is_anomaly, zero_division=0)
+        rec  = recall_score(y_test, is_anomaly, zero_division=0)
+        f1   = f1_score(y_test, is_anomaly, zero_division=0)
+        roc  = roc_auc_score(y_test, risk_scores)
+        pr_auc = average_precision_score(y_test, risk_scores)
+        cm   = confusion_matrix(y_test, is_anomaly)
+        tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+
+        print("\n  [Performance Metrics vs Ground Truth Targets]")
+        print(f"    Precision             : {prec:.4f}")
+        print(f"    Recall                : {rec:.4f}")
+        print(f"    F1 Score              : {f1:.4f}")
+        print(f"    ROC-AUC Score         : {roc:.4f}")
+        print(f"    PR-AUC Score          : {pr_auc:.4f}")
+
+        print("\n  [Confusion Matrix Breakdown]")
+        print(f"    True Negatives  (TN)  : {tn:,}")
+        print(f"    False Positives (FP)  : {fp:,}")
+        print(f"    False Negatives (FN)  : {fn:,}")
+        print(f"    True Positives  (TP)  : {tp:,}")
 
     # Profile anomalies vs normal
     results_df = X_test.copy()
@@ -125,10 +162,10 @@ def train_and_evaluate_model(force_reprocess: bool = False, contamination: float
     ]
     profile = results_df.groupby('is_anomaly')[profile_cols].mean().round(2)
     profile.index = ['Normal (0)', 'Anomaly (1)']
-    print("\n  Average Feature Values: Normal vs Anomaly")
-    print("  " + "-" * 50)
+    print("\n  [Average Feature Values: Normal vs Anomaly]")
+    print("  " + "-" * 54)
     print(profile.T.to_string())
-    print("  " + "-" * 50)
+    print("  " + "-" * 54)
 
     # Export flagged anomalies
     anomalies_df = results_df[results_df['is_anomaly'] == 1].sort_values('anomaly_score')
@@ -154,4 +191,4 @@ def train_and_evaluate_model(force_reprocess: bool = False, contamination: float
 
 
 if __name__ == '__main__':
-    train_and_evaluate_model(force_reprocess=True, contamination=0.02)
+    train_and_evaluate_model(force_reprocess=False, contamination=0.02)

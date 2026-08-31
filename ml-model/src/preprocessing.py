@@ -350,6 +350,14 @@ def preprocess_pipeline(raw_csv_path, output_dir, future_window_hours=3, train_r
 
 if __name__ == '__main__':
     base_dir      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    raw_path      = os.path.join(base_dir, 'data', 'raw', 'indian_bank_transactions.csv')
+    raw_dir       = os.path.join(base_dir, 'data', 'raw')
+    raw_path      = os.path.join(raw_dir, 'indian_bank_transactions.csv')
+    
+    if not os.path.exists(raw_path) and os.path.exists(raw_dir):
+        csv_files = [f for f in os.listdir(raw_dir) if f.endswith('.csv')]
+        if csv_files:
+            raw_path = os.path.join(raw_dir, csv_files[0])
+            print(f"Default raw file not found. Auto-detected raw file: {raw_path}")
+
     processed_dir = os.path.join(base_dir, 'data', 'processed')
     preprocess_pipeline(raw_path, processed_dir, train_ratio=0.80)
