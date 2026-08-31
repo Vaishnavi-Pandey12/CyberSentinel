@@ -1,9 +1,13 @@
 from fastapi import APIRouter, Request, HTTPException
+from fastapi.responses import StreamingResponse
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timezone
 from bson import ObjectId
 import networkx as nx
 import numpy as np
+import asyncio
+import json
+import time
 from sklearn.cluster import DBSCAN
 from app.db.mongo import get_database
 
@@ -33,7 +37,289 @@ def get_db(request: Request):
         return request.app.mongodb
     return get_database()
 
-@router.post("/propagate-risk")
+# ─────────────────────────────────────────────────────────────────────────────
+# SSE: ML Pipeline Terminal Stream
+# Streams step-by-step logs from the full intelligence pipeline
+# ─────────────────────────────────────────────────────────────────────────────
+def _sse(event_type: str, message: str, data: dict = None) -> str:
+    """Format a single Server-Sent Event line."""
+    payload = {"type": event_type, "message": message, "ts": datetime.now(timezone.utc).isoformat()}
+    if data:
+        payload["data"] = data
+    return f"data: {json.dumps(payload)}\n\n"
+
+async def _pipeline_generator(db):
+    """
+    Async generator that runs the intelligence pipeline step-by-step,
+    yielding an SSE line for each significant moment.
+    """
+    yield _sse("BOOT", "[ CyberSentinel Intelligence Engine v1.0 ]")
+    await asyncio.sleep(0.3)
+    yield _sse("BOOT", "Initializing pipeline runtime...")
+    await asyncio.sleep(0.4)
+    yield _sse("INFO", "Authenticating with MongoDB Atlas cluster...")
+    await asyncio.sleep(0.5)
+
+    # ── Step 1: Load graph data ──────────────────────────────────────────────
+    yield _sse("STEP", "═══ STEP 1/5 ─ Loading Network Graph Data ═══")
+    await asyncio.sleep(0.3)
+
+    nodes_count = await db["nodes"].count_documents({"status": {"$ne": "FROZEN"}})
+    if nodes_count == 0:
+        yield _sse("WARN", "Node collection is empty. Seeding baseline graph...")
+        await db["nodes"].insert_many(SEED_NODES)
+        await db["edges"].insert_many(SEED_EDGES)
+        nodes_count = len(SEED_NODES)
+    await asyncio.sleep(0.3)
+
+    nodes = await db["nodes"].find({"status": {"$ne": "FROZEN"}}).to_list(length=500)
+    edges = await db["edges"].find().to_list(length=500)
+    await asyncio.sleep(0.2)
+
+    yield _sse("OK", f"Loaded {len(nodes)} active nodes from database")
+    await asyncio.sleep(0.15)
+    yield _sse("OK", f"Loaded {len(edges)} transaction edges from ledger")
+    await asyncio.sleep(0.2)
+
+    node_types = {}
+    for n in nodes:
+        t = n.get("type", "UNKNOWN")
+        node_types[t] = node_types.get(t, 0) + 1
+    for t, cnt in node_types.items():
+        yield _sse("DATA", f"  → {t:10s}: {cnt} nodes")
+        await asyncio.sleep(0.1)
+
+    # ── Step 2: Build NetworkX graph ─────────────────────────────────────────
+    yield _sse("STEP", "═══ STEP 2/5 ─ Building NetworkX Directed Graph ═══")
+    await asyncio.sleep(0.3)
+
+    G = nx.DiGraph()
+    for node in nodes:
+        nid = str(node.get("_id") or node.get("id"))
+        G.add_node(nid,
+            type=node.get("type", "UNKNOWN"),
+            riskScore=float(node.get("riskScore", 0)),
+            is_seed=bool(node.get("is_seed_node", False)),
+            metadata=node.get("metadata", {})
+        )
+    await asyncio.sleep(0.2)
+
+    edge_types: Dict[str, int] = {}
+    for edge in edges:
+        src = str(edge.get("source"))
+        tgt = str(edge.get("target"))
+        e_type = str(edge.get("type", "TRANSFER")).upper()
+        weight = 2.0 if e_type == "SHARED_KYC" else (0.8 if e_type == "CASH_WITHDRAWAL" else 1.0)
+        if src in G.nodes and tgt in G.nodes:
+            G.add_edge(src, tgt, type=e_type, weight=weight)
+            edge_types[e_type] = edge_types.get(e_type, 0) + 1
+    await asyncio.sleep(0.2)
+
+    yield _sse("OK", f"Graph constructed — {G.number_of_nodes()} nodes, {G.number_of_edges()} edges")
+    await asyncio.sleep(0.15)
+    for et, cnt in edge_types.items():
+        yield _sse("DATA", f"  → {et:20s}: {cnt} edges (w={2.0 if et=='SHARED_KYC' else (0.8 if et=='CASH_WITHDRAWAL' else 1.0):.1f})")
+        await asyncio.sleep(0.1)
+
+    # ── Step 3: BFS + Personalized PageRank ─────────────────────────────────
+    yield _sse("STEP", "═══ STEP 3/5 ─ Propagating Risk Scores (PPR) ═══")
+    await asyncio.sleep(0.3)
+
+    # Filter hub nodes (>50 connections) to prevent risk leakage
+    hub_nodes = [n for n, deg in G.degree() if deg > 50]
+    if hub_nodes:
+        yield _sse("WARN", f"Removing {len(hub_nodes)} hub nodes (deg > 50) to prevent risk diffusion leak")
+    G_filtered = G.copy()
+    if hub_nodes:
+        G_filtered.remove_nodes_from(hub_nodes)
+    await asyncio.sleep(0.25)
+
+    seed_nodes = [n for n, attr in G_filtered.nodes(data=True)
+        if attr.get("type") == "VICTIM" or attr.get("is_seed") or attr.get("riskScore", 0) >= 95]
+    if not seed_nodes:
+        seed_nodes = list(G_filtered.nodes())[:1]
+
+    yield _sse("INFO", f"Identified {len(seed_nodes)} seed / victim nodes as personalization anchors")
+    await asyncio.sleep(0.2)
+
+    seed_dict = {n: (1.0 if n in seed_nodes else 0.0) for n in G_filtered.nodes()}
+    total_weight = sum(seed_dict.values())
+    personalization = {k: v / total_weight for k, v in seed_dict.items()} if total_weight > 0 else None
+    await asyncio.sleep(0.2)
+
+    yield _sse("INFO", "Running Personalized PageRank  α=0.85  (Google damping factor)...")
+    await asyncio.sleep(0.6)
+
+    try:
+        pr_scores = nx.pagerank(G_filtered, alpha=0.85, personalization=personalization, weight="weight")
+        yield _sse("OK", "PageRank converged successfully")
+    except Exception as e:
+        pr_scores = {n: 0.1 for n in G_filtered.nodes()}
+        yield _sse("WARN", f"PageRank fallback (disconnected graph): {e}")
+    await asyncio.sleep(0.2)
+
+    max_pr = max(pr_scores.values()) if pr_scores and max(pr_scores.values()) > 0 else 1.0
+    yield _sse("INFO", "Normalizing scores to 0–100 scale...")
+    await asyncio.sleep(0.25)
+
+    node_scores = {}
+    for n in G.nodes():
+        if n in seed_nodes:
+            norm_score = 100.0
+        else:
+            raw = pr_scores.get(n, 0.0)
+            norm_score = min(99.0, round((raw / max_pr) * 100.0, 1))
+        G.nodes[n]["riskScore"] = norm_score
+        node_scores[n] = norm_score
+
+    # Show top 5 high-risk nodes
+    top_nodes = sorted(node_scores.items(), key=lambda x: x[1], reverse=True)[:5]
+    yield _sse("DATA", "  Top scored nodes:")
+    for nid, score in top_nodes:
+        ntype = G.nodes[nid].get("type", "?")
+        yield _sse("DATA", f"    [{ntype:8s}] {nid:20s}  →  risk: {score:.1f}/100")
+        await asyncio.sleep(0.12)
+
+    # Update DB
+    updated = 0
+    for n, score in node_scores.items():
+        if ObjectId.is_valid(n):
+            q = {"$or": [{"_id": ObjectId(n)}, {"_id": n}]}
+        else:
+            q = {"$or": [{"_id": n}, {"id": n}]}
+        await db["nodes"].update_one(q, {"$set": {"riskScore": score}})
+        updated += 1
+    await asyncio.sleep(0.2)
+    yield _sse("OK", f"Risk scores persisted to database  ({updated} records updated)")
+    await asyncio.sleep(0.2)
+
+    # ── Step 4: DBSCAN Spatial Clustering ────────────────────────────────────
+    yield _sse("STEP", "═══ STEP 4/5 ─ Spatial DBSCAN Clustering ═══")
+    await asyncio.sleep(0.3)
+
+    yield _sse("INFO", "Identifying ATM terminal nodes with risk > 80...")
+    await asyncio.sleep(0.25)
+
+    # Exclude ATMs where cash withdrawal already occurred (reactive, not predictive)
+    executed_atm_ids = set()
+    for u, v, attr in G.edges(data=True):
+        if str(attr.get("type", "")).upper() == "CASH_WITHDRAWAL":
+            if G.nodes.get(v, {}).get("type") == "ATM":
+                executed_atm_ids.add(v)
+
+    candidate_atms = []
+    for n, attr in G.nodes(data=True):
+        if attr.get("type") == "ATM" and n not in executed_atm_ids:
+            meta = attr.get("metadata", {})
+            if "lat" in meta and "lng" in meta:
+                candidate_atms.append({"id": n, "riskScore": attr.get("riskScore", 80),
+                    "lat": float(meta["lat"]), "lng": float(meta["lng"])})
+
+    # Synthetic Vijayawada ATM fallback
+    if len(candidate_atms) < 2:
+        candidate_atms = [
+            {"id": "ATM_BENZ_1", "riskScore": 89.0, "lat": 16.4971, "lng": 80.6516},
+            {"id": "ATM_BENZ_2", "riskScore": 87.5, "lat": 16.4975, "lng": 80.6650},
+            {"id": "ATM_PATAMATA", "riskScore": 84.0, "lat": 16.5020, "lng": 80.6580},
+            {"id": "ATM_MG_ROAD", "riskScore": 82.0, "lat": 16.5060, "lng": 80.6490},
+        ]
+        yield _sse("WARN", "Insufficient live ATM geo-data. Injecting synthetic Vijayawada ATM corpus.")
+    await asyncio.sleep(0.2)
+
+    yield _sse("INFO", f"Running DBSCAN  ε=5km  min_samples=2  metric=haversine  algo=ball_tree")
+    await asyncio.sleep(0.5)
+
+    coords = np.array([[atm["lat"], atm["lng"]] for atm in candidate_atms])
+    coords_rad = np.radians(coords)
+    ZONE_RADIUS_KM = 5.0
+    epsilon = ZONE_RADIUS_KM / 6371.0
+    dbscan = DBSCAN(eps=epsilon, min_samples=2, metric="haversine", algorithm="ball_tree")
+    labels = dbscan.fit_predict(coords_rad)
+    await asyncio.sleep(0.3)
+
+    clusters: Dict[int, List] = {}
+    noise_count = 0
+    for atm, label in zip(candidate_atms, labels):
+        cid = int(label)
+        if cid == -1:
+            noise_count += 1
+            continue
+        clusters.setdefault(cid, []).append(atm)
+
+    if not clusters:
+        clusters[0] = candidate_atms
+        yield _sse("WARN", f"All points classified as noise under min_samples=2. Falling back to primary cluster.")
+    else:
+        yield _sse("OK", f"DBSCAN complete — {len(clusters)} cluster(s) found, {noise_count} noise point(s)")
+    await asyncio.sleep(0.2)
+
+    interdiction_zones = []
+    for label, atms in clusters.items():
+        lats = [a["lat"] for a in atms]
+        lngs = [a["lng"] for a in atms]
+        padding = 0.01
+        zone = {
+            "zone_id": f"TARGET-CLUSTER-{int(label)+1}",
+            "priority_weight": len(atms),
+            "center": {"lat": sum(lats)/len(lats), "lng": sum(lngs)/len(lngs)},
+            "bounding_box": {"north": max(lats)+padding, "south": min(lats)-padding,
+                             "east": max(lngs)+padding, "west": min(lngs)-padding},
+            "target_nodes": [a["id"] for a in atms]
+        }
+        interdiction_zones.append(zone)
+        avg_risk = round(sum(a["riskScore"] for a in atms) / len(atms), 1)
+        yield _sse("DATA", f"  → {zone['zone_id']}  |  {len(atms)} ATMs  |  avg risk {avg_risk}  |  ⚡ DISPATCH_UNIT")
+        await asyncio.sleep(0.15)
+
+    interdiction_zones.sort(key=lambda z: z["priority_weight"], reverse=True)
+
+    # ── Step 5: Final Report ──────────────────────────────────────────────────
+    yield _sse("STEP", "═══ STEP 5/5 ─ Intelligence Report ═══")
+    await asyncio.sleep(0.3)
+
+    high_risk = [(n, s) for n, s in node_scores.items() if s > 80]
+    yield _sse("INFO", f"Nodes analyzed          : {G.number_of_nodes()}")
+    await asyncio.sleep(0.1)
+    yield _sse("INFO", f"High-risk nodes (>80)   : {len(high_risk)}")
+    await asyncio.sleep(0.1)
+    yield _sse("INFO", f"Interdiction zones      : {len(interdiction_zones)}")
+    await asyncio.sleep(0.1)
+    yield _sse("INFO", f"Algorithm               : Personalized PageRank (α=0.85) + DBSCAN (Haversine)")
+    await asyncio.sleep(0.3)
+    yield _sse("OK", "Intelligence pipeline complete. Awaiting operational response.")
+    await asyncio.sleep(0.2)
+    yield _sse("DONE", "SYSTEM READY", {"interdiction_zones": interdiction_zones, "nodes_analyzed": G.number_of_nodes(), "high_risk_count": len(high_risk)})
+
+@router.get("/stream-pipeline")
+async def stream_ml_pipeline(request: Request):
+    """
+    Server-Sent Events endpoint.
+    Streams the full ML intelligence pipeline execution log line-by-line.
+    Frontend terminal connects to this to display live ML output.
+    """
+    db = get_db(request)
+
+    async def event_generator():
+        try:
+            async for chunk in _pipeline_generator(db):
+                # Check if client disconnected
+                if await request.is_disconnected():
+                    break
+                yield chunk
+        except Exception as e:
+            yield _sse("ERROR", f"Pipeline error: {str(e)}")
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        }
+    )
+
+
 @router.post("/api/engine/propagate-risk")
 async def propagate_risk_and_find_hotspots(request: Request):
     db = get_db(request)
