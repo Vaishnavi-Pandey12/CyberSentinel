@@ -1,0 +1,223 @@
+{
+  "source_description": "2024 NCERT cybercrime trends presentation, NCRP cyber-fraud data, and 2018-19 historical ATM physical crime statistics",
+  "atm_hotspots_ncert_2024": [
+    {
+      "rank": 1,
+      "location": "Delhi",
+      "state": "Delhi",
+      "district": "Central Delhi",
+      "transactions": 34156,
+      "latitude": 28.6139,
+      "longitude": 77.209
+    },
+    {
+      "rank": 2,
+      "location": "Alwar",
+      "state": "Rajasthan",
+      "district": "Alwar",
+      "transactions": 28629,
+      "latitude": 27.553,
+      "longitude": 76.6346
+    },
+    {
+      "rank": 3,
+      "location": "Kolkata",
+      "state": "West Bengal",
+      "district": "Kolkata",
+      "transactions": 28124,
+      "latitude": 22.5726,
+      "longitude": 88.3639
+    },
+    {
+      "rank": 4,
+      "location": "Patna",
+      "state": "Bihar",
+      "district": "Patna",
+      "transactions": 25230,
+      "latitude": 25.5941,
+      "longitude": 85.1376
+    },
+    {
+      "rank": 5,
+      "location": "Bharatpur",
+      "state": "Rajasthan",
+      "district": "Bharatpur",
+      "transactions": 19160,
+      "latitude": 27.2152,
+      "longitude": 77.493
+    },
+    {
+      "rank": 6,
+      "location": "Mathura",
+      "state": "Uttar Pradesh",
+      "district": "Mathura",
+      "transactions": 11403,
+      "latitude": 27.4924,
+      "longitude": 77.6737
+    },
+    {
+      "rank": 7,
+      "location": "Kaman",
+      "state": "Rajasthan",
+      "district": "Bharatpur",
+      "transactions": 10496,
+      "latitude": 27.6536,
+      "longitude": 77.2685
+    },
+    {
+      "rank": 8,
+      "location": "Jaipur",
+      "state": "Rajasthan",
+      "district": "Jaipur",
+      "transactions": 9702,
+      "latitude": 26.9124,
+      "longitude": 75.7873
+    },
+    {
+      "rank": 9,
+      "location": "Deoghar",
+      "state": "Jharkhand",
+      "district": "Deoghar",
+      "transactions": 9583,
+      "latitude": 24.4826,
+      "longitude": 86.6997
+    },
+    {
+      "rank": 10,
+      "location": "Nalanda",
+      "state": "Bihar",
+      "district": "Nalanda",
+      "transactions": 9486,
+      "latitude": 25.1357,
+      "longitude": 85.4434
+    },
+    {
+      "rank": 11,
+      "location": "Dhanbad",
+      "state": "Jharkhand",
+      "district": "Dhanbad",
+      "transactions": 9000,
+      "latitude": 23.7957,
+      "longitude": 86.4304
+    },
+    {
+      "rank": 12,
+      "location": "Gurgaon/Gurugram",
+      "state": "Haryana",
+      "district": "Gurugram",
+      "transactions": 8659,
+      "latitude": 28.4595,
+      "longitude": 77.0266
+    },
+    {
+      "rank": 13,
+      "location": "Punahana",
+      "state": "Haryana",
+      "district": "Nuh",
+      "transactions": 8447,
+      "latitude": 27.8682,
+      "longitude": 77.2008
+    },
+    {
+      "rank": 14,
+      "location": "Dumka",
+      "state": "Jharkhand",
+      "district": "Dumka",
+      "transactions": 7634,
+      "latitude": 24.2676,
+      "longitude": 87.2474
+    },
+    {
+      "rank": 15,
+      "location": "Agra",
+      "state": "Uttar Pradesh",
+      "district": "Agra",
+      "transactions": 5103,
+      "latitude": 27.1767,
+      "longitude": 78.0081
+    },
+    {
+      "rank": 16,
+      "location": "Faridabad",
+      "state": "Haryana",
+      "district": "Faridabad",
+      "transactions": 4694,
+      "latitude": 28.4089,
+      "longitude": 77.3178
+    },
+    {
+      "rank": 17,
+      "location": "Bardhaman",
+      "state": "West Bengal",
+      "district": "Purba Bardhaman",
+      "transactions": 8611,
+      "latitude": 23.2324,
+      "longitude": 87.8615
+    },
+    {
+      "rank": 18,
+      "location": "Howrah",
+      "state": "West Bengal",
+      "district": "Howrah",
+      "transactions": 3267,
+      "latitude": 22.5958,
+      "longitude": 88.2636
+    }
+  ],
+  "ncrp_state_reported_incidents": {
+    "Uttar Pradesh": 630778,
+    "Maharashtra": 427607,
+    "Gujarat": 367754,
+    "Rajasthan": 267781,
+    "Karnataka": 252487,
+    "Telangana": 241666,
+    "Haryana": 212001,
+    "Delhi": 205464,
+    "Tamil Nadu": 185584,
+    "West Bengal": 153110,
+    "Bihar": 149857,
+    "Andhra Pradesh": 113439,
+    "Madhya Pradesh": 105991,
+    "Kerala": 83945,
+    "Odisha": 75274,
+    "Punjab": 75087,
+    "Chhattisgarh": 63941,
+    "Uttarakhand": 61712,
+    "Jharkhand": 38632,
+    "Assam": 30821
+  },
+  "historical_atm_physical_crimes_2018_19": {
+    "Maharashtra": 67,
+    "Rajasthan": 65,
+    "Haryana": 51,
+    "Madhya Pradesh": 41,
+    "Delhi": 39,
+    "Uttar Pradesh": 36,
+    "Gujarat": 28,
+    "Punjab": 28,
+    "Bihar": 23,
+    "Telangana": 22,
+    "Odisha": 20,
+    "West Bengal": 18,
+    "Karnataka": 16,
+    "Tamil Nadu": 10,
+    "Andhra Pradesh": 8,
+    "Kerala": 8,
+    "J&K": 7,
+    "Chhattisgarh": 6,
+    "Jharkhand": 5,
+    "Himachal Pradesh": 4,
+    "Goa": 3,
+    "Uttarakhand": 3,
+    "Assam": 2,
+    "Arunachal Pradesh": 2,
+    "Chandigarh": 2,
+    "Puducherry": 1
+  },
+  "delhi_police_atm_security_survey_2024": {
+    "atms_without_security_guards": 2000,
+    "atms_without_shutter_locks": 2765,
+    "vulnerability_rate_guard_missing": 0.45,
+    "vulnerability_rate_lock_missing": 0.58
+  }
+}

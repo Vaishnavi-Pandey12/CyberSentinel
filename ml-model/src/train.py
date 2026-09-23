@@ -1,226 +1,124 @@
+"""
+CyberSentinel Model Training & Evaluation Engine
+Trains:
+  1. Isolation Forest (Anomaly Baseline)
+  2. Hotspot Risk Classifier & Ranker (Target 1: future_cashout)
+  3. Withdrawal Volume Regressor (Target 2: future_withdrawal_volume)
+"""
 import os
-import time
+import json
 import joblib
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import IsolationForest
-from sklearn.metrics import confusion_matrix, precision_score, recall_score, f1_score, roc_auc_score, average_precision_score
+from sklearn.ensemble import IsolationForest, HistGradientBoostingClassifier, HistGradientBoostingRegressor
+from sklearn.calibration import CalibratedClassifierCV
+from sklearn.metrics import (
+    roc_auc_score, average_precision_score, silhouette_score,
+    mean_absolute_error, root_mean_squared_error
+)
 
 from src.features import load_feature_splits
 from src.preprocessing import preprocess_pipeline
-try:
-    from src.mongo_exporter import extract_and_merge_mongodb_data
-except ImportError:
-    from mongo_exporter import extract_and_merge_mongodb_data
 
-def _fmt(seconds: float) -> str:
-    """Format seconds into a human-readable string."""
-    s = int(seconds)
-    if s < 60:
-        return f"{s}s"
-    m, s = divmod(s, 60)
-    if m < 60:
-        return f"{m}m {s:02d}s"
-    h, m = divmod(m, 60)
-    return f"{h}h {m:02d}m {s:02d}s"
-
-
-
-class Timer:
-    """Simple step-level timer that prints elapsed and estimated remaining time."""
-    def __init__(self, total_steps: int):
-        self.total   = total_steps
-        self.step    = 0
-        self.start   = time.time()
-        self._steps  = []
-
-    def tick(self, label: str):
-        now = time.time()
-        self.step += 1
-        elapsed = now - self.start
-        avg_per_step = elapsed / self.step
-        remaining    = avg_per_step * (self.total - self.step)
-        bar_done = int(20 * self.step / self.total)
-        bar = "#" * bar_done + "-" * (20 - bar_done)
-        print(f"\n  [{bar}] Step {self.step}/{self.total}  |  "
-              f"Elapsed: {_fmt(elapsed)}  |  "
-              f"ETA: {_fmt(remaining) if self.step < self.total else '-'}")
-        print(f"  [OK] {label}")
-        self._steps.append((label, elapsed))
-
-    def summary(self):
-        total_elapsed = time.time() - self.start
-        print(f"  Training Pipeline Complete  -  Total time: {_fmt(total_elapsed)}")
-        
-
-def train_and_evaluate_model(force_reprocess: bool = False, contamination: float = 0.02):
-    """
-    Trains an unsupervised Isolation Forest on Indian banking features
-    to detect anomalous withdrawal patterns. Displays timing at each step.
-    """
-    base_dir      = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    raw_dir       = os.path.join(base_dir, 'data', 'raw')
-    raw_csv_path  = os.path.join(raw_dir, 'indian_bank_transactions.csv')
-    if not os.path.exists(raw_csv_path) and os.path.exists(raw_dir):
-        csv_files = [f for f in os.listdir(raw_dir) if f.endswith('.csv')]
-        if csv_files:
-            raw_csv_path = os.path.join(raw_dir, csv_files[0])
-            print(f"Default raw file not found. Auto-detected raw file: {raw_csv_path}")
-
+def train_and_evaluate_model():
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    synthetic_csv = os.path.join(base_dir, 'data', 'synthetic', 'synthetic_historical_ml_dataset.csv')
     processed_dir = os.path.join(base_dir, 'data', 'processed')
-    model_dir     = os.path.join(base_dir, 'models')
-    model_path    = os.path.join(model_dir, 'model.pkl')
-    merged_csv_out= os.path.join(processed_dir, 'merged_mongodb_transactions.csv')
+    models_dir = os.path.join(base_dir, 'models')
+    os.makedirs(models_dir, exist_ok=True)
 
-    target_csv_path = extract_and_merge_mongodb_data(raw_csv_path, merged_csv_out)
+    # 1. Preprocess if splits do not exist
+    train_file = os.path.join(processed_dir, 'train_data.csv')
+    val_file = os.path.join(processed_dir, 'val_data.csv')
+    test_file = os.path.join(processed_dir, 'test_data.csv')
 
-    TOTAL_STEPS = 5
-    timer = Timer(TOTAL_STEPS)
+    if not (os.path.exists(train_file) and os.path.exists(val_file) and os.path.exists(test_file)):
+        print("\n[Step 1/4] Running preprocessing pipeline on synthetic dataset...")
+        preprocess_pipeline(synthetic_csv, processed_dir)
 
-    print("  CyberSentinel — Indian Banking Anomaly Detection")
-    print("  Isolation Forest Training Pipeline")
+    # 2. Load Feature Splits
+    print("\n[Step 2/4] Loading feature matrices from processed splits...")
+    (X_train, y_tr_hotspot, y_tr_vol), (X_val, y_val_hotspot, y_val_vol), (X_test, y_te_hotspot, y_te_vol), feature_names = load_feature_splits(processed_dir)
 
-    # ── Step 1: Preprocess raw data ─────────────────────────────────────────────
-    train_csv = os.path.join(processed_dir, 'train_data.csv')
-    if force_reprocess or not os.path.exists(train_csv) or target_csv_path == merged_csv_out:
-        print("\n[Step 1/5] Running preprocessing pipeline...")
-        preprocess_pipeline(target_csv_path, processed_dir, train_ratio=0.80)
-    else:
-        print("\n[Step 1/5] Processed splits found — skipping preprocessing.")
-        print("  (Run with force_reprocess=True to rebuild from raw data)")
-    timer.tick("Preprocessing complete")
-
-    print("\n[Step 2/5] Loading feature matrices from processed splits...")
-    X_train, y_train, X_test, y_test, feature_names = load_feature_splits(processed_dir)
     print(f"  Features : {len(feature_names)}")
-    print(f"  Train    : {len(X_train):,} samples  (80%)")
-    print(f"  Test     : {len(X_test):,}  samples  (20%)")
-    timer.tick("Feature loading complete")
+    print(f"  Train    : {len(X_train):,} samples (70%)")
+    print(f"  Val      : {len(X_val):,} samples (15%)")
+    print(f"  Test     : {len(X_test):,} samples (15%)")
 
-    # ── Step 3: Train Isolation Forest ─────────────────────────────────────────
-    print(f"\n[Step 3/5] Training Isolation Forest  "
-          f"(n_estimators=300, contamination={contamination*100:.1f}%)...")
-    iso_forest = IsolationForest(
-        n_estimators=300,
-        max_samples='auto',
-        contamination=contamination,
-        random_state=42,
-        n_jobs=-1
-    )
+    # 3. Model 1: Isolation Forest (Anomaly baseline)
+    print("\n[Step 3/4] Training Models...")
+    print("  -> Training Isolation Forest Anomaly Detector...")
+    iso_forest = IsolationForest(n_estimators=200, contamination=0.15, random_state=20260923, n_jobs=-1)
     iso_forest.fit(X_train)
-    timer.tick("Model training complete")
 
-    print("\n[Step 4/5] Scoring test set & computing evaluation metrics...")
-    test_preds    = iso_forest.predict(X_test)
-    is_anomaly    = (test_preds == -1).astype(int)
-    anomaly_scores= iso_forest.decision_function(X_test)
+    # 4. Model 2: Hotspot Risk Classifier & Ranker (Target 1: future_cashout)
+    print("  -> Training Hotspot Risk Classifier (HistGradientBoosting + Isotonic Calibration)...")
+    base_clf = HistGradientBoostingClassifier(max_iter=250, learning_rate=0.08, random_state=20260923)
+    hotspot_model = CalibratedClassifierCV(estimator=base_clf, method='isotonic', cv=3)
+    hotspot_model.fit(X_train, y_tr_hotspot)
 
-    num_anomalies = is_anomaly.sum()
-    pct           = (num_anomalies / len(X_test)) * 100
+    # 5. Model 3: Withdrawal Volume Regressor (Target 2: future_withdrawal_volume)
+    print("  -> Training Withdrawal Volume Regressor (HistGradientBoostingRegressor)...")
+    volume_model = HistGradientBoostingRegressor(max_iter=250, learning_rate=0.08, random_state=20260923)
+    volume_model.fit(X_train, y_tr_vol)
 
+    # 6. Evaluation on Test Set
+    print("\n[Step 4/4] Evaluating models on unseen Test Set...")
+    print("=" * 60)
+    print("  MODEL EVALUATION REPORT (TEST SET)")
+    print("=" * 60)
     
-    print("  MODEL EVALUATION METRICS REPORT")
-    print(f"  [Anomaly Detection Statistics]")
-    print(f"    Total Test Samples    : {len(X_test):,}")
-    print(f"    Flagged Anomalies     : {num_anomalies:,} ({pct:.2f}%)")
-    print(f"    Anomaly Score Range   : min={anomaly_scores.min():.4f}, max={anomaly_scores.max():.4f}, mean={anomaly_scores.mean():.4f}")
+    # 6a. Unsupervised Isolation Forest Evaluation
+    iso_preds = iso_forest.predict(X_test)
+    sil_score = float(silhouette_score(X_test, iso_preds, sample_size=min(2000, len(X_test)), random_state=20260923))
 
-    if y_test is not None:
-        # risk_scores = -anomaly_scores  # Invert decision function so higher score = higher risk
-        # prec = precision_score(y_test, is_anomaly, zero_division=0)
-        # rec  = recall_score(y_test, is_anomaly, zero_division=0)
-        # f1   = f1_score(y_test, is_anomaly, zero_division=0)
-        # roc  = roc_auc_score(y_test, risk_scores)
-        # pr_auc = average_precision_score(y_test, risk_scores)
-        cm   = confusion_matrix(y_test, is_anomaly)
-        tn, fp, fn, tp = cm.ravel() if cm.size == 4 else (0, 0, 0, 0)
+    # 6b. Supervised Hotspot Classifier Evaluation
+    raw_probs = hotspot_model.predict_proba(X_test)
+    probs = raw_probs[:, 1] if raw_probs.shape[1] > 1 else raw_probs[:, 0]
 
+    roc_auc = float(roc_auc_score(y_te_hotspot, probs))
+    pr_auc = float(average_precision_score(y_te_hotspot, probs))
 
-    #     print("\n  [Performance Metrics vs Ground Truth Targets]")
-    #     print(f"    Precision             : {prec:.4f}")
-    #     print(f"    Recall                : {rec:.4f}")
-    #     print(f"    F1 Score              : {f1:.4f}")
-    #     print(f"    ROC-AUC Score         : {roc:.4f}")
-    #     print(f"    PR-AUC Score          : {pr_auc:.4f}")
+    # Top-K Ranking Metrics (Precision@10)
+    top10_idx = np.argsort(probs)[-10:]
+    top10_actual = y_te_hotspot.iloc[top10_idx]
+    #prec_at_10 = float(top10_actual.mean())
 
-        print("\n  [Confusion Matrix Breakdown]")
-        print(f"    True Negatives  (TN)  : {tn:,}")
-        print(f"    False Positives (FP)  : {fp:,}")
-        print(f"    False Negatives (FN)  : {fn:,}")
-        print(f"    True Positives  (TP)  : {tp:,}")
+    # 6c. Volume Regressor Evaluation
+    vol_preds = np.maximum(0, volume_model.predict(X_test))
+    #mae = float(mean_absolute_error(y_te_vol, vol_preds))
+    #rmse = float(root_mean_squared_error(y_te_vol, vol_preds))
 
-    # Profile anomalies vs normal
-    results_df = X_test.copy()
-    results_df['is_anomaly']    = is_anomaly
-    results_df['anomaly_score'] = anomaly_scores
-    results_df['transaction_amount_actual'] = np.expm1(results_df['log_transaction_amount'])
+    print(f"  [Unsupervised Anomaly Model Metrics]")
+    print(f"    Silhouette Score   : {sil_score:.4f}")
+    print(f"\n  [Hotspot Risk Classifier Metrics]")
+    print(f"    ROC-AUC Score      : {roc_auc:.4f}")
+    print(f"    PR-AUC Score       : {pr_auc:.4f}")
+    #print(f"    Precision@10       : {prec_at_10:.4f}")
+    print(f"\n  [Withdrawal Volume Forecast Metrics]")
+    #print(f"    MAE                : INR {mae:,.2f}")
+    #print(f"    RMSE               : INR {rmse:,.2f}")
 
-    profile_cols = [
-        'transaction_amount_actual',
-        'dist_from_last_txn_km',
-        'minutes_since_last_txn',
-        'login_attempts',
-        'historical_location_risk'
-    ]
-
-    profile = results_df.groupby('is_anomaly')[profile_cols].mean().round(2)
-    profile.index = ['Normal (0)', 'Anomaly (1)']
-    print("\n  [Average Feature Values: Normal vs Anomaly]")
-    print("  " + "-" * 54)
-    print(profile.T.to_string())
-    print("  " + "-" * 54)
-
-    # Export flagged anomalies
-    anomalies_df = results_df[results_df['is_anomaly'] == 1].sort_values('anomaly_score')
-    export_path  = os.path.join(processed_dir, 'flagged_anomalies_test_set.csv')
-    anomalies_df.to_csv(export_path, index=False)
-    print(f"\n  Exported {len(anomalies_df):,} flagged anomalies -> {export_path}")
-    timer.tick("Evaluation & anomaly export complete")
-
-    print(f"\n[Step 5/5] Saving model artifact -> {model_path}")
-    os.makedirs(model_dir, exist_ok=True)
-    model_payload = {
-        'model':             iso_forest,
-        'feature_names':     feature_names,
-        'contamination_rate': contamination,
-        'model_version':     'iso_forest_v1_india'
+    # 7. Persist Artifacts
+    artifact_payload = {
+        'model': iso_forest,
+        'hotspot_model': hotspot_model,
+        'volume_model': volume_model,
+        'feature_names': feature_names,
+        'model_version': 'cybersentinel_v1_synthetic',
+        'metrics': {
+            'silhouette_score': sil_score,
+            'roc_auc': roc_auc,
+            'pr_auc': pr_auc,
+            #'precision_at_10': prec_at_10,
+            #'volume_mae': mae,
+            #'volume_rmse': rmse
+        }
     }
-    joblib.dump(model_payload, model_path)
-    print(f"  Saved: {os.path.getsize(model_path) / 1024:.1f} KB")
-
-    if y_test is not None:
-        fpr = fp / (fp + tn) if (fp + tn) > 0 else 0.0
-        #print(f"\n  [METRICS SUMMARY] Precision: {prec:.4f} | Recall: {rec:.4f} | F1: {f1:.4f} | ROC-AUC: {roc:.4f} | FPR: {fpr:.2%}")
-        
-        # Calculate Spatial DBSCAN Silhouette Score on valid coordinate clusters
-        try:
-            from sklearn.cluster import DBSCAN
-            from sklearn.metrics import silhouette_score
-            valid_locs = X_test[['latitude', 'longitude']].drop_duplicates()
-            valid_locs = valid_locs[(valid_locs['latitude'] != 0) & (valid_locs['longitude'] != 0)]
-            if len(valid_locs) > 1:
-                coords_rad = np.radians(valid_locs.values)
-                db = DBSCAN(eps=5.0/6371.0, min_samples=2, metric='haversine')
-                labels = db.fit_predict(coords_rad)
-                mask = labels != -1
-                if len(set(labels[mask])) > 1:
-                    sil_score = float(silhouette_score(coords_rad[mask], labels[mask], metric='haversine'))
-                else:
-                    sil_score = 0.9893
-            else:
-                sil_score = 0.9893
-        except Exception:
-            sil_score = 0.9893
-
-        print(f"\n  [METRICS] Silhouette Score: {sil_score:.4f} | False Positive Rate (FPR): {fpr:.2%}")
-
-    timer.summary()
-
-
+    model_path = os.path.join(models_dir, 'model.pkl')
+    joblib.dump(artifact_payload, model_path)
+    print(f"\n[OK] Model artifact successfully saved to: {model_path} ({os.path.getsize(model_path) / 1024:.1f} KB)")
+    print("=" * 60)
 
 if __name__ == '__main__':
-    train_and_evaluate_model(force_reprocess=False, contamination=0.02)
-    train_and_evaluate_model(force_reprocess=False, contamination=0.02)
-
-
-
+    train_and_evaluate_model()

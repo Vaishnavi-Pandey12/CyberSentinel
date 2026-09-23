@@ -1,0 +1,36 @@
+{
+  "dataset_name": "cybersentinel_synthetic_v1",
+  "generated_at": "2026-09-23T22:05:37.379343",
+  "random_seed": 20260923,
+  "public_sources": [
+    "2024 NCERT cybercrime trends presentation - ATM Hotspots intelligence table",
+    "NCRP State-level cyber-fraud reported incident statistics",
+    "Historical ATM physical crime hotspots 2018-19",
+    "Delhi Police ATM security survey 2024 (2,000+ unguarded ATMs, 2,765 unlocked shutters)"
+  ],
+  "total_atms": 600,
+  "total_accounts": 15000,
+  "total_transactions": 58455,
+  "total_complaints": 3085,
+  "fraud_transaction_rate": 0.1583,
+  "city_transaction_distribution": {
+    "Delhi": 8354,
+    "Kolkata": 6783,
+    "Alwar": 6765,
+    "Patna": 6184,
+    "Bharatpur": 4583,
+    "Mathura": 2690,
+    "Kaman": 2598,
+    "Jaipur": 2381,
+    "Deoghar": 2370,
+    "Nalanda": 2278,
+    "Dhanbad": 2252,
+    "Gurgaon/Gurugram": 2126,
+    "Bardhaman": 2096,
+    "Punahana": 2034,
+    "Dumka": 1846,
+    "Agra": 1216,
+    "Faridabad": 1130,
+    "Howrah": 769
+  }
+}
